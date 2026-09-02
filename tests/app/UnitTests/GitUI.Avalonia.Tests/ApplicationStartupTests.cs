@@ -20,15 +20,20 @@ public sealed class ApplicationStartupTests
         Program.ShouldUseWayland(isLinux, waylandDisplay).Should().Be(expected);
     }
 
-    [Test]
-    public void GetGitExtensionsFullPath_should_accept_the_Avalonia_entry_point()
+    [TestCase("GitExtensions.Avalonia.exe")]
+    [TestCase("GitExtensions.Avalonia")]
+    [Category("P0_6")]
+    public void GetGitExtensionsFullPath_should_accept_the_Avalonia_entry_point(string executableName)
     {
+        const string failFastEnvironmentVariable = "GITEXTENSIONS_DEBUG_FAIL_FAST";
         AppSettings.TestAccessor accessor = AppSettings.GetTestAccessor();
         string originalPath = accessor.ApplicationExecutablePath;
-        string avaloniaPath = Path.Combine(TestContext.CurrentContext.WorkDirectory, "GitExtensions.Avalonia.exe");
+        string? originalFailFast = Environment.GetEnvironmentVariable(failFastEnvironmentVariable);
+        string avaloniaPath = Path.Combine(TestContext.CurrentContext.WorkDirectory, executableName);
 
         try
         {
+            Environment.SetEnvironmentVariable(failFastEnvironmentVariable, "1");
             accessor.ApplicationExecutablePath = avaloniaPath;
 
             AppSettings.GetGitExtensionsFullPath().Should().Be(avaloniaPath);
@@ -36,6 +41,7 @@ public sealed class ApplicationStartupTests
         finally
         {
             accessor.ApplicationExecutablePath = originalPath;
+            Environment.SetEnvironmentVariable(failFastEnvironmentVariable, originalFailFast);
         }
     }
 }

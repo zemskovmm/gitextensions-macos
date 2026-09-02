@@ -1885,21 +1885,23 @@ public static partial class AppSettings
 #if DEBUG
         if (!IsDesignMode)
         {
+            string executableName = Path.GetFileName(_applicationExecutablePath);
             bool isExpectedExe =
 
                 // The app entry points are GitExtensions.exe and its side-by-side Avalonia port.
-                _applicationExecutablePath.EndsWith("GitExtensions.exe", StringComparison.InvariantCultureIgnoreCase) ||
-                _applicationExecutablePath.EndsWith("GitExtensions.Avalonia.exe", StringComparison.InvariantCultureIgnoreCase) ||
+                executableName.Equals("GitExtensions.exe", StringComparison.InvariantCultureIgnoreCase) ||
+                executableName.Equals("GitExtensions.Avalonia.exe", StringComparison.InvariantCultureIgnoreCase) ||
+                executableName.Equals("GitExtensions.Avalonia", StringComparison.InvariantCultureIgnoreCase) ||
 
                 // Tests are run by testhost.exe
-                _applicationExecutablePath.EndsWith("testhost.exe", StringComparison.InvariantCultureIgnoreCase) ||
-                _applicationExecutablePath.EndsWith("testhost.x86.exe", StringComparison.InvariantCultureIgnoreCase) ||
+                executableName.Equals("testhost.exe", StringComparison.InvariantCultureIgnoreCase) ||
+                executableName.Equals("testhost.x86.exe", StringComparison.InvariantCultureIgnoreCase) ||
 
-                _applicationExecutablePath.EndsWith("ReSharperTestRunner.exe", StringComparison.InvariantCultureIgnoreCase) ||
-                _applicationExecutablePath.EndsWith("dotnet.exe", StringComparison.InvariantCultureIgnoreCase) ||
+                executableName.Equals("ReSharperTestRunner.exe", StringComparison.InvariantCultureIgnoreCase) ||
+                executableName.Equals("dotnet.exe", StringComparison.InvariantCultureIgnoreCase) ||
 
                 // Translations
-                _applicationExecutablePath.EndsWith("TranslationApp.exe", StringComparison.InvariantCultureIgnoreCase);
+                executableName.Equals("TranslationApp.exe", StringComparison.InvariantCultureIgnoreCase);
 
             DebugHelpers.Assert(isExpectedExe, $"{_applicationExecutablePath} must point to a Git Extensions executable");
         }

@@ -5,6 +5,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.NUnit;
+using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using AvaloniaEdit;
@@ -704,6 +705,62 @@ public sealed class FormCommitTests
     }
 
     [AvaloniaTest]
+    public async Task FormCommit_should_stage_selected_line_of_untracked_file_when_diff_has_focus()
+    {
+        const string fileName = "new filé.md";
+        const string contents = "first\nsecond\nthird\n";
+        GitModule module = CreateRepositoryWithUntrackedFile(fileName, contents);
+        StubMessageBoxHost messageBoxHost = new() { Result = WinFormsShims.DialogResult.Yes };
+        WinFormsShims.ShimHost.MessageBoxHost = messageBoxHost;
+        FormCommit form = new(new GitUICommands(_serviceContainer, module));
+        try
+        {
+            form.Show();
+            FileStatusList unstaged = form.FindControl<FileStatusList>("Unstaged")
+                ?? throw new InvalidOperationException("Unstaged file list was not created.");
+            FileViewer selectedDiff = form.FindControl<FileViewer>("SelectedDiff")
+                ?? throw new InvalidOperationException("Diff viewer was not created.");
+            TextEditor diffEditor = selectedDiff.TextEditor;
+
+            await WaitUntilAsync(() =>
+                unstaged.GitItemStatuses.Count == 1
+                && diffEditor.Document?.Text.Contains("second", StringComparison.Ordinal) == true,
+                () => $"unstaged={unstaged.GitItemStatuses.Count}; diff={diffEditor.Document?.Text}");
+
+            int selectedLine = diffEditor.Document!.Text.IndexOf("second", StringComparison.Ordinal);
+            diffEditor.Select(selectedLine, "second".Length);
+            selectedDiff.FocusViewer();
+            Dispatcher.UIThread.RunJobs();
+            diffEditor.TextArea.IsKeyboardFocusWithin.Should().BeTrue();
+
+            KeyEventArgs keyEvent = new()
+            {
+                RoutedEvent = InputElement.KeyDownEvent,
+                Key = Key.S,
+            };
+            diffEditor.TextArea.RaiseEvent(keyEvent);
+
+            string stagedContent = module.GitExecutable.GetOutput(new GitArgumentBuilder("show") { $":{fileName}".Quote() });
+            string status = module.GitExecutable.GetOutput(new GitArgumentBuilder("status") { "--porcelain=v2", "--", fileName.Quote() });
+            string stagedDiff = module.GitExecutable.GetOutput(new GitArgumentBuilder("diff") { "--cached", "--", fileName.Quote() });
+            string unstagedDiff = module.GitExecutable.GetOutput(new GitArgumentBuilder("diff") { "--", fileName.Quote() });
+
+            keyEvent.Handled.Should().BeTrue();
+            messageBoxHost.Messages.Should().BeEmpty();
+            stagedContent.Should().Be("second\n");
+            File.ReadAllText(Path.Combine(_workingDirectory, fileName)).Should().Be(contents);
+            status.Should().StartWith("1 AM ").And.NotContain("? ");
+            stagedDiff.Should().Contain("+second").And.NotContain("+first").And.NotContain("+third");
+            unstagedDiff.Should().Contain("+first").And.Contain("+third");
+        }
+        finally
+        {
+            form.Close();
+            await form.GetTestAccessor().ClosePersistenceTask;
+        }
+    }
+
+    [AvaloniaTest]
     public async Task FormCommit_should_stage_and_unstage_selected_and_all_files()
     {
         GitModule module = CreateRepositoryWithTwoUnstagedChanges();
@@ -816,6 +873,21 @@ public sealed class FormCommitTests
         File.AppendAllText(fileName, "staged line\n");
         module.GitExecutable.RunCommand(new GitArgumentBuilder("add") { "--", "tracked.txt" });
         File.AppendAllText(fileName, "unstaged line\n");
+        return module;
+    }
+
+    private GitModule CreateRepositoryWithUntrackedFile(string fileName, string contents)
+    {
+        GitModule module = new(_serviceContainer.GetRequiredService<IGitExecutorProvider>(), _workingDirectory);
+        module.GitExecutable.RunCommand(new GitArgumentBuilder("init") { "--quiet" });
+        module.SetSetting("user.name", "Avalonia Test");
+        module.SetSetting("user.email", "avalonia@example.com");
+
+        File.WriteAllText(Path.Combine(_workingDirectory, "tracked.txt"), "initial line\n");
+        module.GitExecutable.RunCommand(new GitArgumentBuilder("add") { "--", "tracked.txt" });
+        module.GitExecutable.RunCommand(new GitArgumentBuilder("commit") { "--quiet", "-m", "initial" });
+
+        File.WriteAllText(Path.Combine(_workingDirectory, fileName), contents);
         return module;
     }
 

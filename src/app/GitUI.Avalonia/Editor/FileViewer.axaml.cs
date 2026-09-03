@@ -1458,7 +1458,7 @@ public partial class FileViewer : GitModuleControl
                 Encoding,
                 reset: false,
                 filePreamble,
-                itemBlobId.ToString());
+                itemBlobId.IsZero ? null : itemBlobId.ToString());
         }
         else
         {
@@ -1513,7 +1513,7 @@ public partial class FileViewer : GitModuleControl
                 Encoding,
                 reset: true,
                 filePreamble,
-                itemBlobId.ToString());
+                itemBlobId.IsZero ? null : itemBlobId.ToString());
         }
         else if (currentItemStaged)
         {
@@ -1584,7 +1584,7 @@ public partial class FileViewer : GitModuleControl
                 Encoding,
                 reset: reverse,
                 filePreamble,
-                itemBlobId.ToString());
+                itemBlobId.IsZero ? null : itemBlobId.ToString());
         }
         else if (!reverse)
         {

@@ -60,6 +60,9 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "commit=$tagged_commit" >> "$GITHUB_OUTPUT"
 
+      - name: Test macOS bundle assembly
+        run: bash eng/avalonia/test-package-macos-app.sh
+
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
         with:
@@ -119,6 +122,7 @@ jobs:
           test "$(plutil -extract CFBundleIdentifier raw "$plist")" = "com.github.gitextensions.GitExtensions.Avalonia"
           test "$(lipo -archs "$executable")" = "arm64"
           cmp "$license" LICENSE.md
+          codesign --verify --deep --strict "$app"
 
           cd "$RUNNER_TEMP"
           shasum -a 256 "$(basename "$archive")" > SHA256SUMS.txt
@@ -137,7 +141,7 @@ jobs:
 
           \`brew install --cask zemskovmm/gitextensions/git-extensions-avalonia\`
 
-          This package is self-contained for Apple Silicon and requires macOS 14 or newer. It is not Developer ID signed or notarized, so macOS requires explicit user approval on first launch. Do not remove quarantine automatically.
+          This package is self-contained for Apple Silicon and requires macOS 14 or newer. The complete app bundle is ad-hoc signed to preserve its structure, but it is not Developer ID signed or notarized, so macOS requires explicit user approval on first launch. Do not remove quarantine automatically.
 
           This is not the completed macOS MVP. Known gaps include refs-tree correctness, primary-flow accessibility, and unverified mutation/parity paths.
           EOF

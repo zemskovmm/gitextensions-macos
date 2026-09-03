@@ -11,7 +11,7 @@ if [[ -z "$publish_directory" || -z "$output_archive" || -z "$bundle_version" ||
     exit 2
 fi
 
-for tool in ditto mktemp plutil; do
+for tool in codesign ditto mktemp plutil; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         echo "error: required command '$tool' is not installed" >&2
         exit 1
@@ -80,6 +80,8 @@ cat > "$contents_directory/Info.plist" <<EOF
 EOF
 
 plutil -lint "$contents_directory/Info.plist"
+codesign --force --deep --sign - "$app_directory"
+codesign --verify --deep --strict "$app_directory"
 
 mkdir -p "$(dirname "$output_archive")"
 rm -f -- "$output_archive"

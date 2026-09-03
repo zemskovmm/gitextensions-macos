@@ -152,3 +152,7 @@ baseline, builds and tests Release configuration, and publishes one create-once 
 prerelease with checksums and GPL/source links. Its final step verifies that GitHub made the release
 immutable. Validate the tag and draft inputs before publication; the tag and assets cannot be
 replaced after GitHub publishes the immutable release.
+
+`test-package-macos-app.sh` protects the preview package against invalid partial signatures. The
+packager ad-hoc signs the complete bundle after assembling its executable, managed files, resources,
+and `Info.plist`; Developer ID signing and notarization remain separate release gates.

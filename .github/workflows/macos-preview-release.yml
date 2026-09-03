@@ -57,11 +57,6 @@ jobs:
             echo "error: release $GITHUB_REF_NAME already exists; releases are create-once" >&2
             exit 1
           fi
-          if [[ "$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq '.enabled')" != "true" ]]; then
-            echo "error: repository release immutability must be enabled before publication" >&2
-            exit 1
-          fi
-
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "commit=$tagged_commit" >> "$GITHUB_OUTPUT"
 

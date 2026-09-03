@@ -145,8 +145,10 @@ confinement, and capture still run in WSL.
 ## Fork macOS preview releases
 
 In `zemskovmm/gitextensions`, pushing a lightweight tag named
-`avalonia-macos-vX.Y.Z` runs `.github/workflows/macos-preview-release.yml`. The workflow requires
-repository release immutability to be enabled, proves the tagged commit descends from the reviewed
-macOS baseline, builds and tests Release configuration, and publishes one create-once Apple Silicon
-prerelease with checksums and GPL/source links. Validate the tag and draft inputs before publication;
-the tag and assets cannot be replaced after GitHub publishes the immutable release.
+`avalonia-macos-vX.Y.Z` runs `.github/workflows/macos-preview-release.yml`. Before pushing the tag,
+the repository administrator must verify release immutability is enabled; a workflow token cannot
+read that repository setting. The workflow proves the tagged commit descends from the reviewed macOS
+baseline, builds and tests Release configuration, and publishes one create-once Apple Silicon
+prerelease with checksums and GPL/source links. Its final step verifies that GitHub made the release
+immutable. Validate the tag and draft inputs before publication; the tag and assets cannot be
+replaced after GitHub publishes the immutable release.

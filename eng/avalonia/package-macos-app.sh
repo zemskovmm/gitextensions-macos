@@ -18,6 +18,13 @@ for tool in ditto mktemp plutil; do
     fi
 done
 
+repository_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+license_file="$repository_root/LICENSE.md"
+if [[ ! -f "$license_file" ]]; then
+    echo "error: repository GPL license was not found at '$license_file'" >&2
+    exit 1
+fi
+
 if [[ ! -x "$publish_directory/GitExtensions.Avalonia" ]]; then
     echo "error: publish directory does not contain the GitExtensions.Avalonia executable" >&2
     exit 1
@@ -41,6 +48,7 @@ macos_directory="$contents_directory/MacOS"
 mkdir -p "$macos_directory" "$contents_directory/Resources"
 cp -a "$publish_directory/." "$macos_directory/"
 chmod +x "$macos_directory/GitExtensions.Avalonia"
+cp "$license_file" "$contents_directory/Resources/LICENSE.md"
 
 cat > "$contents_directory/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -64,7 +72,7 @@ cat > "$contents_directory/Info.plist" <<EOF
   <key>CFBundleVersion</key>
   <string>$bundle_version</string>
   <key>LSMinimumSystemVersion</key>
-  <string>10.15</string>
+  <string>14.0</string>
   <key>NSHighResolutionCapable</key>
   <true/>
 </dict>

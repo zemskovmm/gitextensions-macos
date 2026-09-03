@@ -141,3 +141,12 @@ On a WSL installation whose ext4 VHD has remounted read-only, stop and restart W
 continuing. If the failure repeats only during RID publish, cross-publish `linux-x64` from
 Windows and set `GITEXTENSIONS_FLATPAK_PREBUILT` to its WSL path; Flatpak packaging, launch,
 confinement, and capture still run in WSL.
+
+## Fork macOS preview releases
+
+In `zemskovmm/gitextensions`, pushing a lightweight tag named
+`avalonia-macos-vX.Y.Z` runs `.github/workflows/macos-preview-release.yml`. The workflow requires
+repository release immutability to be enabled, proves the tagged commit descends from the reviewed
+macOS baseline, builds and tests Release configuration, and publishes one create-once Apple Silicon
+prerelease with checksums and GPL/source links. Validate the tag and draft inputs before publication;
+the tag and assets cannot be replaced after GitHub publishes the immutable release.

@@ -1,0 +1,204 @@
+name: macOS preview release
+
+on:
+  push:
+    tags:
+      - 'avalonia-macos-v*'
+
+permissions: {}
+
+concurrency:
+  group: macos-preview-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  release:
+    name: Build and publish Apple Silicon preview
+    if: ${{ github.repository == 'zemskovmm/gitextensions' }}
+    runs-on: macos-15
+    timeout-minutes: 75
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Validate release identity
+        id: identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF_TYPE" != "tag" || ! "$GITHUB_REF_NAME" =~ ^avalonia-macos-v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "error: release tag must match avalonia-macos-vX.Y.Z" >&2
+            exit 1
+          fi
+
+          version="${BASH_REMATCH[1]}"
+          baseline="936650c274c11af457115c7f0bc5ea28503cdfb4"
+          tagged_commit=$(git rev-parse "$GITHUB_REF^{commit}")
+          if [[ "$tagged_commit" != "$GITHUB_SHA" ]]; then
+            echo "error: tag resolves to $tagged_commit, not workflow commit $GITHUB_SHA" >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$baseline" "$tagged_commit"; then
+            echo "error: release commit does not descend from reviewed macOS candidate $baseline" >&2
+            exit 1
+          fi
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "error: release $GITHUB_REF_NAME already exists; releases are create-once" >&2
+            exit 1
+          fi
+          if [[ "$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq '.enabled')" != "true" ]]; then
+            echo "error: repository release immutability must be enabled before publication" >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "commit=$tagged_commit" >> "$GITHUB_OUTPUT"
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ~/.nuget/packages
+          key: macos-preview-nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Directory.Packages.props') }}
+          restore-keys: |
+            macos-preview-nuget-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Restore
+        run: |
+          set -euo pipefail
+          dotnet restore GitExtensions.Avalonia.slnx --force-evaluate
+          dotnet restore GitExtensions.Avalonia.slnx -p:Configuration=Release --force-evaluate
+
+      - name: Build
+        run: dotnet build GitExtensions.Avalonia.slnx -c Release -m:1 --no-restore
+
+      - name: Test startup and view construction
+        run: >-
+          dotnet test tests/app/UnitTests/GitUI.Avalonia.Tests/GitUI.Avalonia.Tests.csproj
+          -c Release --no-build --no-restore
+          -p:BuildAvalonia=true
+          --filter "Category=P0_8B|Category=P0_6"
+          -m:1
+
+      - name: Publish and verify package
+        env:
+          VERSION: ${{ steps.identity.outputs.version }}
+        run: |
+          set -euo pipefail
+          publish="$RUNNER_TEMP/publish-osx-arm64"
+          archive="$RUNNER_TEMP/GitExtensions-Avalonia-$VERSION-osx-arm64.app.zip"
+          extracted="$RUNNER_TEMP/extracted-app"
+
+          dotnet publish src/app/GitExtensions.Avalonia/GitExtensions.Avalonia.csproj \
+            -c Release -p:BuildAvalonia=true -r osx-arm64 --self-contained true -m:1 \
+            --output "$publish"
+          pwsh eng/avalonia/Stage-MaintainerPublish.ps1 -PublishDirectory "$publish"
+          bash eng/avalonia/package-macos-app.sh "$publish" "$archive" "$VERSION" "$VERSION"
+
+          ditto -x -k "$archive" "$extracted"
+          app="$extracted/Git Extensions Avalonia.app"
+          executable="$app/Contents/MacOS/GitExtensions.Avalonia"
+          plist="$app/Contents/Info.plist"
+          license="$app/Contents/Resources/LICENSE.md"
+
+          test -x "$executable"
+          test "$(plutil -extract CFBundleExecutable raw "$plist")" = "GitExtensions.Avalonia"
+          test "$(plutil -extract CFBundleShortVersionString raw "$plist")" = "$VERSION"
+          test "$(plutil -extract CFBundleVersion raw "$plist")" = "$VERSION"
+          test "$(plutil -extract LSMinimumSystemVersion raw "$plist")" = "14.0"
+          test "$(plutil -extract CFBundleIdentifier raw "$plist")" = "com.github.gitextensions.GitExtensions.Avalonia"
+          test "$(lipo -archs "$executable")" = "arm64"
+          cmp "$license" LICENSE.md
+
+          cd "$RUNNER_TEMP"
+          shasum -a 256 "$(basename "$archive")" > SHA256SUMS.txt
+
+      - name: Prepare release notes
+        env:
+          VERSION: ${{ steps.identity.outputs.version }}
+          RELEASE_COMMIT: ${{ steps.identity.outputs.commit }}
+        run: |
+          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          Unsigned Apple Silicon development preview built from exact commit [\`$RELEASE_COMMIT\`](https://github.com/$GITHUB_REPOSITORY/commit/$RELEASE_COMMIT).
+
+          Corresponding GPL-3.0 source is available at the immutable release tag [\`$GITHUB_REF_NAME\`](https://github.com/$GITHUB_REPOSITORY/tree/$GITHUB_REF_NAME). The app bundle also contains \`Contents/Resources/LICENSE.md\`.
+
+          Install through Homebrew after the tap is published:
+
+          \`brew install --cask zemskovmm/gitextensions/git-extensions-avalonia\`
+
+          This package is self-contained for Apple Silicon and requires macOS 14 or newer. It is not Developer ID signed or notarized, so macOS requires explicit user approval on first launch. Do not remove quarantine automatically.
+
+          This is not the completed macOS MVP. Known gaps include refs-tree correctness, primary-flow accessibility, and unverified mutation/parity paths.
+          EOF
+
+      - name: Create and verify draft prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.identity.outputs.version }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/GitExtensions-Avalonia-$VERSION-osx-arm64.app.zip"
+          checksum="$RUNNER_TEMP/SHA256SUMS.txt"
+          verify_dir="$RUNNER_TEMP/draft-download"
+
+          gh release create "$GITHUB_REF_NAME" "$archive" "$checksum" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Git Extensions Avalonia macOS preview $VERSION" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --target "$GITHUB_SHA" \
+            --verify-tag \
+            --draft \
+            --prerelease \
+            --latest=false
+
+          test "$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')" = "true"
+          test "$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq '.isPrerelease')" = "true"
+          mkdir "$verify_dir"
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --dir "$verify_dir"
+          cd "$verify_dir"
+          shasum -a 256 -c SHA256SUMS.txt
+          cmp "GitExtensions-Avalonia-$VERSION-osx-arm64.app.zip" "$archive"
+
+      - name: Publish immutable prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.identity.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release edit "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft=false \
+            --prerelease \
+            --latest=false
+
+          test "$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')" = "false"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" --jq '.immutable')" = "true"
+
+          attempts=0
+          until gh release verify "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"; do
+            attempts=$((attempts + 1))
+            if [[ "$attempts" -ge 6 ]]; then
+              echo "error: release attestation was not available after six attempts" >&2
+              exit 1
+            fi
+            sleep 10
+          done
+
+          asset="$RUNNER_TEMP/draft-download/GitExtensions-Avalonia-$VERSION-osx-arm64.app.zip"
+          gh release verify-asset "$GITHUB_REF_NAME" "$asset" --repo "$GITHUB_REPOSITORY"

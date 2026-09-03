@@ -1,7 +1,7 @@
 # Homebrew tap for Git Extensions macOS previews
 
-This public tap installs the unsigned Apple Silicon development preview from an immutable release
-of [`zemskovmm/gitextensions`](https://github.com/zemskovmm/gitextensions).
+This public tap installs the ad-hoc-signed Apple Silicon development preview from an immutable
+release of [`zemskovmm/gitextensions`](https://github.com/zemskovmm/gitextensions).
 
 ## Install
 
@@ -12,23 +12,26 @@ brew install --cask zemskovmm/gitextensions/git-extensions-avalonia
 ```
 
 The cask installs `Git Extensions Avalonia.app` in `/Applications`. It does not use
-`--no-quarantine`. Because version 0.1.0 is not Developer ID signed or notarized, macOS may block
-the first launch. Review the warning, then use **System Settings → Privacy & Security → Open
-Anyway** only if you accept the risk.
+`--no-quarantine`. Version 0.1.1 has a structurally valid ad-hoc bundle signature, but it is not
+Developer ID signed or notarized, so macOS may block the first launch. Review the warning, then use
+**System Settings → Privacy & Security → Open Anyway** only if you accept the risk.
 
 ## Verify
 
-Version 0.1.0 is pinned to:
+Version 0.1.1 is pinned to:
 
-- source commit [`acb24b24290b3ff4a932d875e1b289688b8965ba`](https://github.com/zemskovmm/gitextensions/commit/acb24b24290b3ff4a932d875e1b289688b8965ba);
-- immutable release [`avalonia-macos-v0.1.0`](https://github.com/zemskovmm/gitextensions/releases/tag/avalonia-macos-v0.1.0);
-- archive SHA-256 `f6f24bcc7449b8413c31218638dbec3100dea1273dc53b8737945940bbf8bdbb`.
+- source commit [`847947b065bb5d878541872fb747762523077881`](https://github.com/zemskovmm/gitextensions/commit/847947b065bb5d878541872fb747762523077881);
+- immutable release [`avalonia-macos-v0.1.1`](https://github.com/zemskovmm/gitextensions/releases/tag/avalonia-macos-v0.1.1);
+- archive SHA-256 `a2fa31e793da4a50b2bc877b70857f2214b4a7191c323f97c63cd6f0061444d2`.
 
 GitHub publishes release attestations for the immutable release. With GitHub CLI installed:
 
 ```sh
-gh release verify avalonia-macos-v0.1.0 --repo zemskovmm/gitextensions
+gh release verify avalonia-macos-v0.1.1 --repo zemskovmm/gitextensions
 ```
+
+Version 0.1.0 is superseded because its completed app bundle was not re-signed after packaging,
+causing Gatekeeper to report that the app was damaged.
 
 ## Preview limitations
 

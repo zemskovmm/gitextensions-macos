@@ -7,6 +7,10 @@ cask "git-extensions-avalonia" do
   desc "Unsigned Apple Silicon development preview of Git Extensions"
   homepage "https://github.com/zemskovmm/gitextensions"
 
+  livecheck do
+    skip "Versioned macOS preview channel"
+  end
+
   depends_on arch: :arm64
   depends_on macos: :sonoma
 

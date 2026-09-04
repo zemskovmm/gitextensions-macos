@@ -90,12 +90,17 @@ public static class OsShellUtil
 
         _ = ShimHost.MessageBoxHost.Show(
             owner: null,
-            $"The desktop could not open '{target}'. On Linux, verify that an XDG desktop portal backend is installed and running.",
+            GetLaunchFailureMessage(target, OperatingSystem.IsLinux()),
             ErrorCaption,
             MessageBoxButtons.OK,
             MessageBoxIcon.Error,
             MessageBoxDefaultButton.Button1);
     }
+
+    internal static string GetLaunchFailureMessage(string target, bool isLinux)
+        => isLinux
+            ? $"The desktop could not open '{target}'. On Linux, verify that an XDG desktop portal backend is installed and running."
+            : $"The desktop could not open '{target}'. Verify that a default application is configured for this target.";
 
     // parity-scaffolding: preserves the original shell test interception boundary for portable tests.
     internal struct TestAccessor

@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
+using GitCommands;
 using GitExtensions.Shims.WinForms;
 using GitUI.Compat;
 using NSubstitute;
@@ -39,6 +41,43 @@ public sealed class PortalShellTests
         bool launched = await shell.TryLaunchAsync("https://example.com", OsShellLaunchKind.OpenUri);
 
         launched.Should().BeFalse();
+    }
+
+    [Test]
+    public async Task MacOS_uri_launch_uses_native_open_with_an_untouched_argument()
+    {
+        const string url = "https://git-scm.com/download/mac?source=Git%20Extensions";
+        ProcessStartInfo? launchedProcess = null;
+        IClassicDesktopStyleApplicationLifetime desktop = Substitute.For<IClassicDesktopStyleApplicationLifetime>();
+        IXdgDesktopPortal portal = Substitute.For<IXdgDesktopPortal>();
+        AvaloniaOsShell shell = new(
+            desktop,
+            portal,
+            isLinux: () => false,
+            isMacOS: () => true,
+            startProcess: startInfo =>
+            {
+                launchedProcess = startInfo;
+                return true;
+            });
+
+        bool launched = await shell.TryLaunchAsync(url, OsShellLaunchKind.OpenUri);
+
+        launched.Should().BeTrue();
+        launchedProcess.Should().NotBeNull();
+        launchedProcess!.FileName.Should().Be("/usr/bin/open");
+        launchedProcess.UseShellExecute.Should().BeFalse();
+        launchedProcess.ArgumentList.Should().Equal(url);
+        await portal.DidNotReceiveWithAnyArgs().TryLaunchAsync(default!, default);
+    }
+
+    [Test]
+    public void NonLinux_launch_failure_does_not_recommend_an_XDG_portal()
+    {
+        string message = OsShellUtil.GetLaunchFailureMessage("https://example.com", isLinux: false);
+
+        message.Should().Contain("https://example.com");
+        message.Should().NotContain("Linux").And.NotContain("XDG");
     }
 
     [TestCase(true, true)]

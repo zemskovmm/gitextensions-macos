@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
@@ -14,20 +15,31 @@ public sealed class AvaloniaOsShell : IOsShell
     private readonly IClassicDesktopStyleApplicationLifetime _desktop;
     private readonly IXdgDesktopPortal _portal;
     private readonly Func<bool> _isLinux;
+    private readonly Func<bool> _isMacOS;
+    private readonly Func<ProcessStartInfo, bool> _startProcess;
 
     public AvaloniaOsShell(IClassicDesktopStyleApplicationLifetime desktop, IXdgDesktopPortal portal)
-        : this(desktop, portal, OperatingSystem.IsLinux)
+        : this(
+            desktop,
+            portal,
+            OperatingSystem.IsLinux,
+            OperatingSystem.IsMacOS,
+            startInfo => Process.Start(startInfo) is not null)
     {
     }
 
     internal AvaloniaOsShell(
         IClassicDesktopStyleApplicationLifetime desktop,
         IXdgDesktopPortal portal,
-        Func<bool> isLinux)
+        Func<bool> isLinux,
+        Func<bool>? isMacOS = null,
+        Func<ProcessStartInfo, bool>? startProcess = null)
     {
         _desktop = desktop;
         _portal = portal;
         _isLinux = isLinux;
+        _isMacOS = isMacOS ?? (() => false);
+        _startProcess = startProcess ?? (_ => false);
     }
 
     public bool TryLaunch(string target, OsShellLaunchKind kind)
@@ -38,6 +50,11 @@ public sealed class AvaloniaOsShell : IOsShell
         if (_isLinux())
         {
             return await _portal.TryLaunchAsync(target, kind);
+        }
+
+        if (_isMacOS() && kind == OsShellLaunchKind.OpenUri)
+        {
+            return TryLaunchMacOSUri(target);
         }
 
         TopLevel? topLevel = _desktop.MainWindow;
@@ -55,6 +72,29 @@ public sealed class AvaloniaOsShell : IOsShell
                 Path.GetDirectoryName(Path.GetFullPath(target))),
             _ => await LaunchPathAsync(topLevel, target),
         };
+    }
+
+    private bool TryLaunchMacOSUri(string target)
+    {
+        if (!Uri.TryCreate(target, UriKind.Absolute, out _))
+        {
+            return false;
+        }
+
+        ProcessStartInfo startInfo = new("/usr/bin/open")
+        {
+            UseShellExecute = false,
+        };
+        startInfo.ArgumentList.Add(target);
+
+        try
+        {
+            return _startProcess(startInfo);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static async Task<bool> LaunchPathAsync(TopLevel topLevel, string? path)

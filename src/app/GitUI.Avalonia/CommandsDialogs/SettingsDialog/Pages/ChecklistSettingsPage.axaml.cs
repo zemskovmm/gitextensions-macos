@@ -5,12 +5,14 @@ using GitCommands;
 using GitCommands.Config;
 using GitCommands.DiffMergeTools;
 using GitCommands.Git;
+using GitExtensions.Extensibility;
 using GitExtensions.Extensibility.Git;
 using GitExtensions.Extensibility.Settings;
 using GitExtensions.Extensibility.Translations;
 using GitExtUtils.GitUI.Theming;
 using GitUI.CommandsDialogs.SettingsDialog.ShellExtension;
 using GitUI.Compat;
+using GitUI.HelperDialogs;
 using ResourceManager;
 using WinFormsShims = GitExtensions.Shims.WinForms;
 
@@ -82,6 +84,24 @@ public sealed partial class ChecklistSettingsPage : SettingsPageWithHeader
     private readonly TranslationString _shCanBeRunCaption = new("Locate linux tools");
     private readonly TranslationString _gcmDetectedCaption =
         new("Obsolete git-credential-winstore.exe detected");
+    private readonly TranslationString _gitRepairHeading = new("Update Git");
+    private readonly TranslationString _gitRepairSummary =
+        new("Git Extensions is using Git {0} at:{1}{2}{1}{1}Git {3} or later is recommended.");
+    private readonly TranslationString _gitRepairUse = new("Use Git {0}");
+    private readonly TranslationString _gitRepairDetected = new("Detected Git installations");
+    private readonly TranslationString _gitRepairHideDetected = new("Hide Git installations");
+    private readonly TranslationString _gitRepairCurrent = new("Current");
+    private readonly TranslationString _gitRepairInstall = new("Install or update Git");
+    private readonly TranslationString _gitRepairUpdate = new("Update Git with Homebrew");
+    private readonly TranslationString _gitRepairUpdateCaption = new("Confirm Git update");
+    private readonly TranslationString _gitRepairUpdateConfirmation =
+        new("Git Extensions will run:{0}{1}{0}{0}The command runs without a shell and will not use sudo. Continue?");
+    private readonly TranslationString _gitRepairUpdateVerificationFailed =
+        new("Homebrew finished, but Git {0} or later was not found at {1}. Review the command output, then rescan or choose a Git executable manually.");
+    private readonly TranslationString _gitRepairInstructions =
+        new("Install or update Git outside Git Extensions. With Homebrew, run one of these commands in Terminal:{0}brew install git{0}brew upgrade git");
+    private readonly TranslationString _gitRepairChoose = new("Choose Git executable...");
+    private readonly TranslationString _gitRepairRescan = new("Rescan Git installations");
 
     private const string _putty = "PuTTY";
     private DiffMergeToolConfigurationManager? _diffMergeToolConfigurationManager;
@@ -539,6 +559,59 @@ public sealed partial class ChecklistSettingsPage : SettingsPageWithHeader
 
     private void GitFound_Click(object? sender, EventArgs e)
     {
+        if (OperatingSystem.IsMacOS())
+        {
+            MacGitInstallationLocator locator = new();
+            IReadOnlyList<GitInstallation> installations = locator.Find(
+                AppSettings.GitCommand,
+                Environment.GetEnvironmentVariable("PATH"));
+            GitInstallation? current = installations.FirstOrDefault(installation => installation.IsCurrent);
+            if (current is not null && current.Version < GitVersion.LastRecommendedVersion)
+            {
+                WinFormsShims.IWin32Window? owner = TopLevel.GetTopLevel(this) as WinFormsShims.IWin32Window;
+                IGitUICommands? uiCommands = ServiceProvider as IGitUICommands;
+                MacHomebrewGitUpdatePlanner updatePlanner = new();
+                RepairGitOnMac(new MacGitRepairOperations(
+                    Discover: () => locator.Find(
+                        AppSettings.GitCommand,
+                        Environment.GetEnvironmentVariable("PATH")),
+                    Present: page => TaskDialog.ShowDialog(owner, page),
+                    SelectGit: SelectGit,
+                    OpenInstallInstructions: () => OsShellUtil.OpenUrlInDefaultBrowser("https://git-scm.com/download/mac"),
+                    RefreshChecklist: () =>
+                    {
+                        PageHost.LoadAll();
+                        SaveAndRescan_Click(sender, e);
+                    },
+                    ChooseExecutable: () => PageHost.GotoPage(GitSettingsPage.GetPageReference()),
+                    PlanHomebrewUpdate: () => uiCommands is not null && owner is not null
+                        ? updatePlanner.Find(Environment.GetEnvironmentVariable("PATH"))
+                        : null,
+                    ConfirmHomebrewUpdate: plan => TaskDialog.ShowDialog(owner, new TaskDialogPage
+                    {
+                        Caption = _gitRepairUpdateCaption.Text,
+                        Text = string.Format(
+                            _gitRepairUpdateConfirmation.Text,
+                            Environment.NewLine,
+                            plan.DisplayCommand),
+                        Icon = TaskDialogIcon.Warning,
+                        Buttons = { TaskDialogButton.Yes, TaskDialogButton.No },
+                        DefaultButton = TaskDialogButton.No,
+                        AllowCancel = true,
+                        SizeToContent = true,
+                    }) == TaskDialogButton.Yes,
+                    RunHomebrewUpdate: plan => RunHomebrewUpdate(owner!, uiCommands!, plan),
+                    HomebrewVerificationFailed: plan => MessageBoxes.ShowError(
+                        owner,
+                        string.Format(
+                            _gitRepairUpdateVerificationFailed.Text,
+                            GitVersion.LastRecommendedVersion,
+                            plan.GitPath),
+                        _gitRepairHeading.Text)));
+                return;
+            }
+        }
+
         if (!CheckSettingsLogic.SolveGitCommand())
         {
             MessageBoxes.Show(
@@ -551,14 +624,184 @@ public sealed partial class ChecklistSettingsPage : SettingsPageWithHeader
             return;
         }
 
+        string command = PathUtil.TryFindFullPath(AppSettings.GitCommand, out string? fullPath)
+            ? fullPath
+            : AppSettings.GitCommand;
         MessageBoxes.Show(
             TopLevel.GetTopLevel(this) as WinFormsShims.IWin32Window,
-            string.Format(_gitCanBeRun.Text, AppSettings.GitCommandValue),
+            string.Format(_gitCanBeRun.Text, command),
             _gitCanBeRunCaption.Text,
             WinFormsShims.MessageBoxButtons.OK,
             WinFormsShims.MessageBoxIcon.Information);
         PageHost.GotoPage(GitSettingsPage.GetPageReference());
         SaveAndRescan_Click(sender, e);
+
+        bool SelectGit(string path)
+        {
+            if (CheckSettingsLogic.SolveGitCommand(path))
+            {
+                return true;
+            }
+
+            MessageBoxes.Show(
+                TopLevel.GetTopLevel(this) as WinFormsShims.IWin32Window,
+                _solveGitCommandFailed.Text,
+                _solveGitCommandFailedCaption.Text,
+                WinFormsShims.MessageBoxButtons.OK,
+                WinFormsShims.MessageBoxIcon.Error);
+            return false;
+        }
+
+        static bool RunHomebrewUpdate(
+            WinFormsShims.IWin32Window owner,
+            IGitUICommands uiCommands,
+            HomebrewGitUpdatePlan plan)
+        {
+            ArgumentBuilder arguments = [plan.Verb, "git"];
+            return FormProcess.ShowDialog(
+                owner,
+                uiCommands,
+                arguments,
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                input: null,
+                useDialogSettings: false,
+                process: plan.BrewPath);
+        }
+    }
+
+    internal MacGitRepairDialog CreateMacGitRepairDialog(
+        IReadOnlyList<GitInstallation> installations,
+        Action openInstallInstructions,
+        HomebrewGitUpdatePlan? updatePlan = null)
+    {
+        GitInstallation current = installations.First(installation => installation.IsCurrent);
+        Dictionary<TaskDialogButton, GitInstallation> installationButtons = [];
+        TaskDialogPage page = new()
+        {
+            Caption = _gitCanBeRunCaption.Text,
+            Heading = _gitRepairHeading.Text,
+            Text = string.Format(
+                _gitRepairSummary.Text,
+                current.Version,
+                Environment.NewLine,
+                current.Path,
+                GitVersion.LastRecommendedVersion)
+                + Environment.NewLine
+                + Environment.NewLine
+                + string.Format(_gitRepairInstructions.Text, Environment.NewLine),
+            Icon = TaskDialogIcon.Warning,
+            AllowCancel = true,
+            SizeToContent = true,
+            Expander = new TaskDialogExpander
+            {
+                CollapsedButtonText = _gitRepairDetected.Text,
+                ExpandedButtonText = _gitRepairHideDetected.Text,
+                Text = string.Join(
+                    Environment.NewLine,
+                    installations.Select(installation =>
+                        $"{(installation.IsCurrent ? $"{_gitRepairCurrent.Text}: " : string.Empty)}{installation.Version} — {installation.Path}")),
+            },
+        };
+
+        foreach (GitInstallation installation in installations.Where(
+                     installation => !installation.IsCurrent && installation.Version >= GitVersion.LastRecommendedVersion))
+        {
+            TaskDialogCommandLinkButton button = new(
+                string.Format(_gitRepairUse.Text, installation.Version),
+                installation.Path);
+            installationButtons.Add(button, installation);
+            page.Buttons.Add(button);
+        }
+
+        TaskDialogCommandLinkButton? update = updatePlan is null
+            ? null
+            : new(_gitRepairUpdate.Text, updatePlan.DisplayCommand);
+        if (update is not null)
+        {
+            page.Buttons.Add(update);
+        }
+
+        TaskDialogCommandLinkButton install = new(_gitRepairInstall.Text, allowCloseDialog: false);
+        install.Click += (_, _) => openInstallInstructions();
+        TaskDialogCommandLinkButton chooseExecutable = new(_gitRepairChoose.Text);
+        TaskDialogButton rescan = new(_gitRepairRescan.Text);
+        page.Buttons.Add(install);
+        page.Buttons.Add(chooseExecutable);
+        page.Buttons.Add(rescan);
+        page.Buttons.Add(TaskDialogButton.Cancel);
+        page.DefaultButton = rescan;
+        return new(page, installationButtons, update, install, chooseExecutable, rescan);
+    }
+
+    internal void RepairGitOnMac(MacGitRepairOperations operations)
+    {
+        while (true)
+        {
+            IReadOnlyList<GitInstallation> installations = operations.Discover();
+            GitInstallation? current = installations.FirstOrDefault(installation => installation.IsCurrent);
+            if (current is null)
+            {
+                operations.ChooseExecutable();
+                return;
+            }
+
+            if (current.Version >= GitVersion.LastRecommendedVersion)
+            {
+                operations.RefreshChecklist();
+                return;
+            }
+
+            HomebrewGitUpdatePlan? updatePlan = operations.PlanHomebrewUpdate?.Invoke();
+            MacGitRepairDialog dialog = CreateMacGitRepairDialog(
+                installations,
+                operations.OpenInstallInstructions,
+                updatePlan);
+            TaskDialogButton result = operations.Present(dialog.Page);
+            if (result == dialog.RescanButton)
+            {
+                continue;
+            }
+
+            if (result == dialog.ChooseExecutableButton)
+            {
+                operations.ChooseExecutable();
+            }
+            else if (updatePlan is not null && result == dialog.UpdateButton)
+            {
+                if (operations.ConfirmHomebrewUpdate?.Invoke(updatePlan) != true
+                    || operations.RunHomebrewUpdate?.Invoke(updatePlan) != true)
+                {
+                    return;
+                }
+
+                GitInstallation? updated = updatePlan.FindVerifiedInstallation(operations.Discover());
+                if (updated is null)
+                {
+                    operations.HomebrewVerificationFailed?.Invoke(updatePlan);
+                }
+                else if (operations.SelectGit(updated.Path))
+                {
+                    operations.RefreshChecklist();
+                }
+                else
+                {
+                    operations.ChooseExecutable();
+                }
+            }
+            else if (dialog.InstallationButtons.TryGetValue(result, out GitInstallation? installation))
+            {
+                if (operations.SelectGit(installation.Path))
+                {
+                    operations.RefreshChecklist();
+                }
+                else
+                {
+                    operations.ChooseExecutable();
+                }
+            }
+
+            return;
+        }
     }
 
     private void SaveAndRescan_Click(object? sender, EventArgs e)
@@ -696,3 +939,23 @@ public sealed partial class ChecklistSettingsPage : SettingsPageWithHeader
                && ObsoleteCredentialHelper;
     }
 }
+
+internal sealed record MacGitRepairDialog(
+    TaskDialogPage Page,
+    IReadOnlyDictionary<TaskDialogButton, GitInstallation> InstallationButtons,
+    TaskDialogButton? UpdateButton,
+    TaskDialogButton InstallButton,
+    TaskDialogButton ChooseExecutableButton,
+    TaskDialogButton RescanButton);
+
+internal sealed record MacGitRepairOperations(
+    Func<IReadOnlyList<GitInstallation>> Discover,
+    Func<TaskDialogPage, TaskDialogButton> Present,
+    Func<string, bool> SelectGit,
+    Action OpenInstallInstructions,
+    Action RefreshChecklist,
+    Action ChooseExecutable,
+    Func<HomebrewGitUpdatePlan?>? PlanHomebrewUpdate = null,
+    Func<HomebrewGitUpdatePlan, bool>? ConfirmHomebrewUpdate = null,
+    Func<HomebrewGitUpdatePlan, bool>? RunHomebrewUpdate = null,
+    Action<HomebrewGitUpdatePlan>? HomebrewVerificationFailed = null);

@@ -38,7 +38,9 @@ any product milestone.
 
 ## Migration and release boundary
 
-The candidate is pending the history-preserving tap merge and its verification. Target Homebrew
-version 0.1.2 has not been built or published. A completed layout migration therefore must not be
-reported as a released, installed, signed, notarized, or MVP-complete application. The MVP gates
-in [the MVP specification](../mvp-specification.md) remain required.
+The history-preserving tap merge was completed in
+`ee2daa42652d353df7e1fb51c18d1b34c74681f5`. Preview 0.1.2 was built from that
+commit, published immutably, installed through Homebrew and launched after owner
+Gatekeeper approval. It is ad-hoc signed, not Developer ID signed or notarized.
+These delivery checks do not complete the MVP gates in
+[the MVP specification](../mvp-specification.md).

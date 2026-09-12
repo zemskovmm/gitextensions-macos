@@ -61,12 +61,19 @@ environment, commands, and results in the governed evidence record for that run.
 
 ## Distribution status
 
-ADR 0004 accepts the single-public-repository layout. The candidate still requires the
-history-preserving tap merge and its verification. Target Homebrew version **0.1.2 has not been
-built or published**. Do not describe the following as a successful installation until a reviewed
-release supplies the artifact and Cask metadata:
+ADR 0004 accepts the single-public-repository layout. The tap merge and independent
+public-clone verification passed. Immutable preview **0.1.2** was published from
+`ee2daa42652d353df7e1fb51c18d1b34c74681f5` by the
+[release workflow](https://github.com/zemskovmm/gitextensions-macos/actions/runs/34701776348).
+Local Release build had zero warnings/errors; all 134 focused tests passed with
+isolated HOME/XDG and an explicit English test locale. Packaging verified all
+17 expected portable plugins, the official icon, GPL license and strict ad-hoc signature.
+Homebrew audit/style and installation passed on macOS 26.6.2 arm64. The installed
+app launched to first-run settings after owner Open Anyway approval. This proves
+installation and launch, not the complete repository fixture matrix.
 
 ```sh
+brew trust --cask zemskovmm/gitextensions-macos/git-extensions-avalonia
 brew tap zemskovmm/gitextensions-macos https://github.com/zemskovmm/gitextensions-macos.git
 brew install --cask zemskovmm/gitextensions-macos/git-extensions-avalonia
 ```

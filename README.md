@@ -7,15 +7,18 @@ of WinForms parity.
 
 ## Install
 
-Requires Apple Silicon and macOS 14 or newer. The consolidated preview release is
-being qualified; the cask is updated only after its public archive is verified.
+Requires Apple Silicon and macOS 14 or newer. Preview **0.1.2** is available from
+the [immutable release](https://github.com/zemskovmm/gitextensions-macos/releases/tag/avalonia-macos-v0.1.2).
 
 ```sh
+brew trust --cask zemskovmm/gitextensions-macos/git-extensions-avalonia
 brew tap zemskovmm/gitextensions-macos https://github.com/zemskovmm/gitextensions-macos.git
 brew install --cask zemskovmm/gitextensions-macos/git-extensions-avalonia
 ```
 
 The explicit tap URL is required because this repository is not named `homebrew-*`.
+Recent Homebrew versions require the cask-specific trust step; older versions
+without `brew trust` can omit that line. Trust only after reviewing the cask.
 The app bundle is ad-hoc signed, **not Developer ID signed or notarized**. macOS may
 require your explicit approval in **System Settings → Privacy & Security → Open Anyway**.
 Do not disable Gatekeeper or remove quarantine globally.

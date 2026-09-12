@@ -78,3 +78,15 @@ artifacts/
 .tools/vswhere/
 .dotnet/
 *.svclog
+
+# Local AI execution/recovery data, not application or test inputs.
+/.AI/*
+!/.AI/README.md
+!/.AI/plans/
+/.AI/plans/*
+!/.AI/plans/future/
+.env
+.env.*
+!.env.example
+*.dmp
+*.crash

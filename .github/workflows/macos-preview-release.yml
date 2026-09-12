@@ -19,7 +19,7 @@ env:
 jobs:
   release:
     name: Build and publish Apple Silicon preview
-    if: ${{ github.repository == 'zemskovmm/gitextensions' }}
+    if: ${{ github.repository == 'zemskovmm/gitextensions-macos' }}
     runs-on: macos-15
     timeout-minutes: 75
     permissions:
@@ -43,7 +43,7 @@ jobs:
           fi
 
           version="${BASH_REMATCH[1]}"
-          baseline="936650c274c11af457115c7f0bc5ea28503cdfb4"
+          baseline="0ab619e7fa7b103356fdabaee01c4eae4cd5e058"
           tagged_commit=$(git rev-parse "$GITHUB_REF^{commit}")
           if [[ "$tagged_commit" != "$GITHUB_SHA" ]]; then
             echo "error: tag resolves to $tagged_commit, not workflow commit $GITHUB_SHA" >&2
@@ -79,19 +79,27 @@ jobs:
       - name: Restore
         run: |
           set -euo pipefail
-          dotnet restore GitExtensions.Avalonia.slnx --force-evaluate
-          dotnet restore GitExtensions.Avalonia.slnx -p:Configuration=Release --force-evaluate
+          dotnet restore GitExtensions.Avalonia.slnx -p:BuildAvalonia=true \
+            -p:Configuration=Release -p:ShouldUnsetParentConfigurationAndPlatform=false --force-evaluate
 
       - name: Build
-        run: dotnet build GitExtensions.Avalonia.slnx -c Release -m:1 --no-restore
-
-      - name: Test startup and view construction
         run: >-
-          dotnet test tests/app/UnitTests/GitUI.Avalonia.Tests/GitUI.Avalonia.Tests.csproj
-          -c Release --no-build --no-restore
-          -p:BuildAvalonia=true
-          --filter "Category=P0_8B|Category=P0_6"
-          -m:1
+          dotnet build GitExtensions.Avalonia.slnx -c Release -m:1 --no-restore
+          -p:BuildAvalonia=true -p:ShouldUnsetParentConfigurationAndPlatform=false
+
+      - name: Test macOS regressions and view construction
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/test-home"
+          export XDG_CONFIG_HOME="$HOME/.config" XDG_DATA_HOME="$HOME/.local/share" XDG_CACHE_HOME="$HOME/.cache"
+          export GIT_CONFIG_NOSYSTEM=1
+          export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+          mkdir -p "$HOME" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
+          unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_CONFIG_GLOBAL
+          dotnet test tests/app/UnitTests/GitUI.Avalonia.Tests/GitUI.Avalonia.Tests.csproj \
+            -c Release --no-build --no-restore -p:BuildAvalonia=true -m:1 \
+            --filter "Category=P0_8B|Category=P0_6|FullyQualifiedName~GitVersionRepairTests|FullyQualifiedName~PortalShellTests|FullyQualifiedName~SettingsDialogTests|FullyQualifiedName~ApplicationStartupTests|FullyQualifiedName~StartupCoordinatorTests|FullyQualifiedName~FormCommitTests|FullyQualifiedName~FileViewerContentTests" \
+            --logger "trx;LogFileName=macos-focused.trx" --results-directory "$RUNNER_TEMP/test-results"
 
       - name: Publish and verify package
         env:
@@ -133,13 +141,14 @@ jobs:
           RELEASE_COMMIT: ${{ steps.identity.outputs.commit }}
         run: |
           cat > "$RUNNER_TEMP/release-notes.md" <<EOF
-          Unsigned Apple Silicon development preview built from exact commit [\`$RELEASE_COMMIT\`](https://github.com/$GITHUB_REPOSITORY/commit/$RELEASE_COMMIT).
+          Ad-hoc-signed Apple Silicon development preview built from exact commit [\`$RELEASE_COMMIT\`](https://github.com/$GITHUB_REPOSITORY/commit/$RELEASE_COMMIT).
 
           Corresponding GPL-3.0 source is available at the immutable release tag [\`$GITHUB_REF_NAME\`](https://github.com/$GITHUB_REPOSITORY/tree/$GITHUB_REF_NAME). The app bundle also contains \`Contents/Resources/LICENSE.md\`.
 
           Install through Homebrew after the tap is published:
 
-          \`brew install --cask zemskovmm/gitextensions/git-extensions-avalonia\`
+          \`brew tap zemskovmm/gitextensions-macos https://github.com/zemskovmm/gitextensions-macos.git\`
+          \`brew install --cask zemskovmm/gitextensions-macos/git-extensions-avalonia\`
 
           This package is self-contained for Apple Silicon and requires macOS 14 or newer. The complete app bundle is ad-hoc signed to preserve its structure, but it is not Developer ID signed or notarized, so macOS requires explicit user approval on first launch. Do not remove quarantine automatically.
 

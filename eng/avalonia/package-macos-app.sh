@@ -11,7 +11,7 @@ if [[ -z "$publish_directory" || -z "$output_archive" || -z "$bundle_version" ||
     exit 2
 fi
 
-for tool in codesign ditto mktemp plutil; do
+for tool in codesign ditto iconutil mktemp plutil; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         echo "error: required command '$tool' is not installed" >&2
         exit 1
@@ -24,6 +24,14 @@ if [[ ! -f "$license_file" ]]; then
     echo "error: repository GPL license was not found at '$license_file'" >&2
     exit 1
 fi
+
+logo_directory="$repository_root/setup/assets/Logo"
+for size in 16 32 64 128 256 512; do
+    if [[ ! -f "$logo_directory/git-extensions-logo-${size}px.png" ]]; then
+        echo "error: official ${size}px logo was not found in '$logo_directory'" >&2
+        exit 1
+    fi
+done
 
 if [[ ! -x "$publish_directory/GitExtensions.Avalonia" ]]; then
     echo "error: publish directory does not contain the GitExtensions.Avalonia executable" >&2
@@ -50,6 +58,18 @@ cp -a "$publish_directory/." "$macos_directory/"
 chmod +x "$macos_directory/GitExtensions.Avalonia"
 cp "$license_file" "$contents_directory/Resources/LICENSE.md"
 
+# Use the upstream renders at their native resolution, including Retina sizes.
+iconset="$work_directory/git-extensions-logo.iconset"
+mkdir -p "$iconset"
+for size in 16 32 128 256 512; do
+    cp "$logo_directory/git-extensions-logo-${size}px.png" "$iconset/icon_${size}x${size}.png"
+    retina_size=$((size * 2))
+    if (( retina_size <= 512 )); then
+        cp "$logo_directory/git-extensions-logo-${retina_size}px.png" "$iconset/icon_${size}x${size}@2x.png"
+    fi
+done
+iconutil -c icns "$iconset" -o "$contents_directory/Resources/git-extensions-logo.icns"
+
 cat > "$contents_directory/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -61,6 +81,8 @@ cat > "$contents_directory/Info.plist" <<EOF
   <string>GitExtensions.Avalonia</string>
   <key>CFBundleIdentifier</key>
   <string>com.github.gitextensions.GitExtensions.Avalonia</string>
+  <key>CFBundleIconFile</key>
+  <string>git-extensions-logo.icns</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>

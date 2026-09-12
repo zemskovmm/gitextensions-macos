@@ -6,7 +6,7 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
     exit 0
 fi
 
-for tool in codesign ditto mktemp plutil; do
+for tool in codesign ditto iconutil mktemp plutil sips; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         echo "error: required command '$tool' is not installed" >&2
         exit 1
@@ -46,4 +46,37 @@ fi
 
 test "$(plutil -extract CFBundleIdentifier raw "$app/Contents/Info.plist")" = \
     "com.github.gitextensions.GitExtensions.Avalonia"
-echo "macOS package-signature test passed"
+cmp "$repository_root/LICENSE.md" "$app/Contents/Resources/LICENSE.md"
+
+icon_file=$(plutil -extract CFBundleIconFile raw "$app/Contents/Info.plist")
+icon="$app/Contents/Resources/$icon_file"
+test -s "$icon"
+iconset="$work_directory/extracted.iconset"
+iconutil -c iconset "$icon" -o "$iconset"
+for size in 16 32 128 256 512; do
+    for scale in 1 2; do
+        pixels=$((size * scale))
+        if (( pixels > 512 )); then
+            continue
+        fi
+        suffix=""
+        if (( scale == 2 )); then
+            suffix="@2x"
+        fi
+        image="$iconset/icon_${size}x${size}${suffix}.png"
+        dimensions=$(sips -g pixelWidth -g pixelHeight "$image")
+        [[ "$dimensions" == *"pixelWidth: $pixels"* ]]
+        [[ "$dimensions" == *"pixelHeight: $pixels"* ]]
+        # iconutil's legacy 16/32px extraction changes translucent RGB values.
+        # Compare pixels for PNG-backed representations; check legacy sizes above.
+        if (( scale == 1 && size <= 32 )); then
+            continue
+        fi
+        # PNG metadata changes on extraction; uncompressed BMP normalizes it.
+        sips -s format bmp "$repository_root/setup/assets/Logo/git-extensions-logo-${pixels}px.png" \
+            --out "$work_directory/expected.bmp" >/dev/null
+        sips -s format bmp "$image" --out "$work_directory/actual.bmp" >/dev/null
+        cmp "$work_directory/expected.bmp" "$work_directory/actual.bmp"
+    done
+done
+echo "macOS package-signature and official-icon test passed"

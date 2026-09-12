@@ -1,11 +1,11 @@
 cask "git-extensions-avalonia" do
-  version "0.1.1"
-  sha256 "a2fa31e793da4a50b2bc877b70857f2214b4a7191c323f97c63cd6f0061444d2"
+  version "0.1.2"
+  sha256 "451ab0249fea98de2da370b8ceade08466159fe070924129dc40edcdd64fc8a1"
 
-  url "https://github.com/zemskovmm/gitextensions/releases/download/avalonia-macos-v#{version}/GitExtensions-Avalonia-#{version}-osx-arm64.app.zip"
+  url "https://github.com/zemskovmm/gitextensions-macos/releases/download/avalonia-macos-v#{version}/GitExtensions-Avalonia-#{version}-osx-arm64.app.zip"
   name "Git Extensions Avalonia"
   desc "Ad-hoc-signed Apple Silicon development preview of Git Extensions"
-  homepage "https://github.com/zemskovmm/gitextensions"
+  homepage "https://github.com/zemskovmm/gitextensions-macos"
 
   livecheck do
     skip "Versioned macOS preview channel"
